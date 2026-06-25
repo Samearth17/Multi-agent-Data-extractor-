@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pandas
+python-dotenv
+python-multipart
+PyPDF2
+openpyxl
+langgraph
+langchain-core
+langchain-community
+langchain-google-genai
+google-genai
+groq
+langchain-groq
+rich
+langchain-nvidia-ai-endpoints

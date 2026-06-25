@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Canvas — Multi-Agent Workflow</title>
+    <meta name="description" content="Visual multi-agent canvas for orchestrating AI data analysis workflows.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/canvas.css">
+</head>
+
+<body>
+    <div class="canvas-bg-grid"></div>
+    <div class="canvas-bg-glow canvas-bg-glow-1"></div>
+    <div class="canvas-bg-glow canvas-bg-glow-2"></div>
+    <nav class="canvas-navbar" id="canvasNavbar">
+        <div class="navbar-left">
+            <a href="/" class="navbar-back" title="Back to Chat">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+            </a>
+            <div class="navbar-brand">
+                <span class="brand-text">Agent Canvas</span>
+            </div>
+        </div>
+        <div class="navbar-center">
+            <div class="navbar-status" id="navbarStatus">
+                <span class="nav-status-dot"></span>
+                <span class="nav-status-text">Ready</span>
+            </div>
+        </div>
+        <div class="navbar-right">
+            <button class="nav-btn" id="zoomInBtn" title="Zoom In">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35M11 8v6M8 11h6" />
+                </svg>
+            </button>
+            <button class="nav-btn" id="zoomOutBtn" title="Zoom Out">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35M8 11h6" />
+                </svg>
+            </button>
+            <button class="nav-btn" id="resetViewBtn" title="Reset View">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                </svg>
+            </button>
+            <div class="nav-divider"></div>
+            <button class="nav-btn nav-btn-danger" id="clearAllBtn" title="Clear All Data">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+                <span>Clear All</span>
+            </button>
+            <button class="nav-btn nav-btn-primary" id="runWorkflowBtn" title="Run Full Workflow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                <span>Run Workflow</span>
+            </button>
+        </div>
+    </nav>
+    <div class="canvas-viewport" id="canvasViewport">
+        <div class="canvas-world" id="canvasWorld">
+            <svg class="canvas-wires" id="canvasWires"></svg>
+        </div>
+    </div>
+
+
+    <div class="agent-panel hidden" id="agentPanel">
+        <div class="agent-panel-header" id="agentPanelHeader">
+            <div class="agent-panel-info">
+                <span class="agent-panel-icon" id="agentPanelIcon">🧠</span>
+                <div>
+                    <div class="agent-panel-name" id="agentPanelName">Data Extractor</div>
+                    <div class="agent-panel-type" id="agentPanelType">Orchestrator</div>
+                </div>
+            </div>
+            <button class="agent-panel-close" id="agentPanelClose" title="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="agent-panel-desc" id="agentPanelDesc">Top-level orchestrator agent.</div>
+        <div class="agent-panel-messages" id="agentPanelMessages">
+            <div class="agent-panel-empty">Double-click a node or type a question below to interact with this agent.
+            </div>
+        </div>
+        <div class="agent-panel-input-area">
+            <textarea id="agentPanelInput" placeholder="Ask this agent a question..." rows="1"></textarea>
+            <button class="agent-panel-send" id="agentPanelSend">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="workflow-modal hidden" id="workflowModal">
+        <div class="workflow-modal-content">
+            <h3>Run Multi-Agent Workflow</h3>
+            <p>Your question will be routed through the full agent hierarchy.</p>
+            <textarea id="workflowInput" placeholder="Ask your question..." rows="3"></textarea>
+            <div class="workflow-modal-actions">
+                <button class="wf-btn wf-btn-cancel" id="workflowCancel">Cancel</button>
+                <button class="wf-btn wf-btn-run" id="workflowRun">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    Run
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="canvas-toast-container" id="toastContainer"></div>
+
+    <script src="/static/canvas.js"></script>
+</body>
+
+</html>

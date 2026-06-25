@@ -1,0 +1,45 @@
+# Environment & Secrets
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+.venv/
+env/
+
+# Data files (generated at runtime)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Notebooks & debug scripts
+*.ipynb
+a.ipynb
+d.py
+
+# Third-party local packages
+deepagents/
+
+# Misc
+notebook/
+*.log
