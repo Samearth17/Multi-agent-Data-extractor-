@@ -10,7 +10,7 @@ langgraph==0.2.60
 langchain-core==0.3.28
 langchain-community==0.3.13
 langchain-google-genai==2.0.8
-google-genai==0.8.3
+google-genai==2.10.0
 groq==0.13.1
 langchain-groq==0.2.3
 rich==13.9.4
