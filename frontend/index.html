@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal AI Data Analyst</title>
+    <title>Multi-Agent Data Extractor</title>
     <meta name="description"
         content="Upload any CSV, Excel, PDF, or Text file and ask questions in plain English. AI-powered multi-agent analysis.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,11 +17,6 @@
 </head>
 
 <body>
-    <div class="bg-grid"></div>
-    <div class="bg-glow bg-glow-1"></div>
-    <div class="bg-glow bg-glow-2"></div>
-    <div class="bg-glow bg-glow-3"></div>
-
     <!-- API Key Setup Modal -->
     <div class="modal-overlay hidden" id="setupModal">
         <div class="modal">
@@ -48,11 +43,15 @@
             <div class="modal-input-row">
                 <input type="password" id="apiKeyInput" placeholder="Paste your API key here..." autocomplete="off"
                     spellcheck="false">
-                <button class="toggle-visibility" id="toggleVisibility" title="Show/hide key">see</button>
+                <button class="toggle-visibility" id="toggleVisibility" title="Show/hide key" aria-label="Toggle key visibility">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </button>
             </div>
             <div class="modal-error" id="modalError"></div>
             <button class="modal-submit" id="modalSubmit">
-                <span id="modalSubmitText">Connect & Start</span>
+                <span id="modalSubmitText">Connect &amp; Start</span>
                 <span class="modal-spinner hidden" id="modalSpinner">⏳</span>
             </button>
             <p class="modal-note">
@@ -66,7 +65,14 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-logo">
-                    <span class="logo-icon">⚡</span>
+                    <span class="logo-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <rect x="3" y="3" width="7" height="7" rx="1"/>
+                            <rect x="14" y="3" width="7" height="7" rx="1"/>
+                            <rect x="3" y="14" width="7" height="7" rx="1"/>
+                            <rect x="14" y="14" width="7" height="7" rx="1"/>
+                        </svg>
+                    </span>
                     <span class="logo-text">Datasets</span>
                 </div>
                 <button class="sidebar-close" id="sidebarClose" aria-label="Close sidebar">✕</button>
@@ -75,7 +81,13 @@
 
                 <!-- Upload Area -->
                 <div class="upload-zone" id="uploadZone">
-                    <div class="upload-icon">📂</div>
+                    <div class="upload-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
                     <div class="upload-text">Drop a file here<br><span>or click to upload</span></div>
                     <input type="file" id="csvFileInput" accept=".csv,.xlsx,.xls,.pdf,.txt,.log,.md"
                         style="display:none;">
@@ -107,7 +119,7 @@
                     </svg>
                 </button>
                 <div class="top-title">
-                    <h1>Universal AI Data Analyst</h1>
+                    <h1>Data Extractor</h1>
                     <span class="top-subtitle">Upload any file · Ask anything · Multi-agent analysis</span>
                 </div>
                 <div class="top-status" id="topStatus">
@@ -127,7 +139,7 @@
 
             <div class="chat-area" id="chatArea">
                 <div class="welcome-container" id="welcomeContainer">
-                    <h2 class="welcome-title">Universal AI Data Extractor</h2>
+                    <h2 class="welcome-title">Multi-Agent Data Extractor</h2>
                     <p class="welcome-desc">
                         Powered by <strong>DeepAgents</strong> + LangChain SQLToolkit.<br>
                         Upload any structured or unstructured data file and extract instant insights using natural language.
@@ -151,8 +163,14 @@
 
                     <!-- Upload CTA when no data -->
                     <div class="upload-cta" id="uploadCta">
-                        <div class="upload-cta-icon">⚡</div>
-                        <p class="upload-cta-text">Drag & drop your files anywhere, or browse to begin analysis</p>
+                        <div class="upload-cta-icon">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </div>
+                        <p class="upload-cta-text">Drag &amp; drop your files anywhere, or browse to begin analysis</p>
                         <button class="upload-cta-btn" id="uploadCtaBtn">Upload File</button>
                     </div>
 
@@ -189,23 +207,4 @@
                                 d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                         </svg>
                     </button>
-                    <textarea id="queryInput" placeholder="Upload a file and ask any question about your data..."
-                        rows="1" aria-label="Query input"></textarea>
-                    <button class="send-btn" id="sendBtn" aria-label="Send query">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                        </svg>
-                    </button>
-                </div>
-                <div class="input-hint">
-                    Press <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for new line · 📎 attach file
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <script src="/static/script.js"></script>
-</body>
-
-</html>
+                    <textarea id="queryInput" placeholder="Upload a file and ask any que
