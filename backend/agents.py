@@ -156,7 +156,8 @@ def get_tables_for_agent(agent_id: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# TRIMMED PROMPT — keeps context short enough for free-tier models
+# AGENT PROMPT — schema cap raised from 2 000 to 6 000 chars
+# This was the root cause of extraction failures on real datasets.
 # ---------------------------------------------------------------------------
 
 def _build_agent_prompt(agent_id: str, question: str, focus_tables: list[str] = None) -> str:
@@ -167,9 +168,10 @@ def _build_agent_prompt(agent_id: str, question: str, focus_tables: list[str] = 
 
     role = _get_role_prompt(agent_id)
 
-    # Hard-cap schema to 2 000 chars so small models don't overflow context
-    if len(schema_text) > 2000:
-        schema_text = schema_text[:2000] + "\n... (schema truncated)"
+    # Raised from 2 000 to 6 000 — small models can handle this; truncation was
+    # silently cutting schemas mid-table, causing column-name hallucinations.
+    if len(schema_text) > 6000:
+        schema_text = schema_text[:6000] + "\n... (schema truncated)"
 
     return f"""You are the **{agent['name']}** — {agent['description']}
 
@@ -300,7 +302,6 @@ def run_agent_query(agent_id: str, question: str, focus_tables: list[str] = None
                 answer = result.get("output", str(result))
             except Exception as invoke_err:
                 err_str = str(invoke_err)
-                # Try to salvage partial output
                 if "Extra data" in err_str or "JSONDecodeError" in err_str:
                     answer = _salvage_from_error(err_str, tables)
                     result = {"output": answer, "intermediate_steps": []}
@@ -309,21 +310,26 @@ def run_agent_query(agent_id: str, question: str, focus_tables: list[str] = None
 
             tabular = None
 
-            # Safety net: detect raw tool-call leakage
             if isinstance(answer, str) and _is_raw_tool_output(answer):
                 answer, tabular = _salvage_from_raw_output(answer, tables, result)
 
-            # Detect refusal / non-answers and replace with a direct SQL fallback
             if isinstance(answer, str) and _is_unhelpful_answer(answer):
                 print(f"[{agent_id}] Unhelpful answer detected, running direct SQL fallback")
                 answer, tabular = _direct_sql_fallback(question, tables)
 
-            # Extract SQL used
             sql = _extract_sql_from_steps(result.get("intermediate_steps", []))
 
             elapsed = round(time.time() - start, 2)
             if not tabular:
                 tabular = _parse_markdown_table(answer)
+
+            # Final safety: if tabular is still empty but we have an answer, run
+            # a direct raw fallback so the frontend always has data to display.
+            if not tabular.get("data") and tables:
+                print(f"[{agent_id}] tabular empty after parse — running direct SQL fallback")
+                _, fallback_tabular = _direct_sql_fallback(question, tables)
+                if fallback_tabular.get("data"):
+                    tabular = fallback_tabular
 
             return {
                 "status": "success",
@@ -351,7 +357,6 @@ def run_agent_query(agent_id: str, question: str, focus_tables: list[str] = None
             continue
 
     elapsed = round(time.time() - start, 2)
-    # Surface the real error message — never silently say "Unknown error"
     friendly = _friendly_error(last_error)
     return {
         "status": "error",
@@ -375,14 +380,12 @@ def _is_raw_tool_output(text: str) -> bool:
 
 
 def _is_unhelpful_answer(text: str) -> bool:
-    """Detect when the LLM gives a refusal or vague non-answer."""
     t = text.strip().lower()
     refusals = [
         "i don't know", "i do not know", "i cannot", "i can't",
         "unable to", "no information", "no data available",
         "i don't have access", "i'm not able",
     ]
-    # Short answer that is purely a refusal
     return len(t) < 300 and any(r in t for r in refusals)
 
 
@@ -404,7 +407,7 @@ def _direct_sql_fallback(question: str, tables: list[str]) -> tuple[str, dict]:
         md += "|" + "|".join(["---"] * len(cols)) + "|\n"
         for row in rows:
             md += "| " + " | ".join(str(row.get(c, "")) for c in cols) + " |\n"
-        answer = f"*(Direct query fallback — the AI model could not answer directly, so here are the raw results from `{t}`:)*\n\n{md}"
+        answer = f"*(Direct query fallback — showing raw results from `{t}`:)*\n\n{md}"
         tabular = _parse_markdown_table(md)
         if not tabular.get("data"):
             tabular = {"data": rows, "columns": cols}
@@ -414,7 +417,6 @@ def _direct_sql_fallback(question: str, tables: list[str]) -> tuple[str, dict]:
 
 
 def _salvage_from_error(err_str: str, tables: list[str]) -> str:
-    """When agent.invoke itself raises, produce a friendly message."""
     if "quota" in err_str.lower() or "429" in err_str or "rate" in err_str.lower():
         return "The AI provider is rate-limited. Please wait a moment and try again."
     if "api key" in err_str.lower() or "authentication" in err_str.lower():
@@ -423,7 +425,6 @@ def _salvage_from_error(err_str: str, tables: list[str]) -> str:
 
 
 def _salvage_from_raw_output(answer: str, tables: list[str], result: dict) -> tuple[str, dict | None]:
-    """Try to extract a SQL query from a raw tool-call output blob."""
     sql_match = re.search(
         r'(?i)["\']query["\']\s*:\s*["\']([^"\']*(?:SELECT|WITH)[^"\']+)["\']', answer
     )
@@ -494,12 +495,11 @@ def _friendly_error(err: str) -> str:
         return "The request timed out. The data may be too large — try a more specific question."
     if "connection" in e or "network" in e:
         return "Network error. Check your internet connection and try again."
-    # Generic but still informative
     return f"Extraction failed: {err[:250]}"
 
 
 # ---------------------------------------------------------------------------
-# WORKFLOW / PARALLEL RUNNERS (unchanged logic, kept clean)
+# WORKFLOW / PARALLEL RUNNERS
 # ---------------------------------------------------------------------------
 
 def run_workflow(question: str) -> dict:
@@ -509,7 +509,7 @@ def run_workflow(question: str) -> dict:
     activated = ["data_extractor"]
     q = question.lower()
 
-    if any(k in q for k in ["csv", "table", "column", "row", "sql", "data", "price", "count", "sum", "average"]):
+    if any(k in q for k in ["csv", "table", "column", "row", "sql", "data", "price", "count", "sum", "average", "mean", "total", "min", "max", "list", "show", "top", "bottom", "group", "sort", "filter", "where"]):
         activated += ["structured_data", "csv_agent"]
     if any(k in q for k in ["excel", "xls", "spreadsheet", "sheet"]):
         activated += ["structured_data", "xls_agent"]
@@ -517,8 +517,19 @@ def run_workflow(question: str) -> dict:
         activated += ["unstructured_data", "pdf_agent"]
     if any(k in q for k in ["text", "log", "file", "content", "read"]):
         activated += ["unstructured_data", "text_agent"]
+
+    # Smart fallback: use actual loaded file types instead of blindly defaulting to csv
     if len(activated) == 1:
-        activated += ["structured_data", "csv_agent"]
+        detected = _detect_active_agents()
+        if detected:
+            for a in detected:
+                activated.append(a)
+                info = AGENT_REGISTRY.get(a, {})
+                parent = info.get("parent")
+                if parent:
+                    activated.append(parent)
+        else:
+            activated += ["structured_data", "csv_agent"]
 
     result["activated_agents"]  = list(set(activated))
     result["workflow_elapsed"] = round(time.time() - start, 2)
@@ -618,7 +629,7 @@ def run_parallel_analysis(question: str, focus_agents: list[str] = None, focus_t
         futures = []
         for i, agent_id in enumerate(specialist_agents):
             if i > 0:
-                time.sleep(0.5)  # stagger to avoid free-tier 429s
+                time.sleep(0.5)
             futures.append(executor.submit(run_agent_query, agent_id, question, focus_tables))
 
         for i, future in enumerate(futures):
@@ -683,7 +694,6 @@ def run_parallel_analysis(question: str, focus_agents: list[str] = None, focus_t
 
     combined_answer = "\n\n---\n\n".join(merged_answers) if merged_answers else "Analysis complete."
 
-    # Synthesis step for multi-agent results
     if len(successful) > 1:
         try:
             p, m = available[0]
