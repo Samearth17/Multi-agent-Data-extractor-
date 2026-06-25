@@ -1,6 +1,8 @@
 /* ================================================================
    PROFESSIONAL DESIGN SYSTEM — Multi-Agent Data Extractor
    Clean, minimal, data-tool aesthetic. No gradients, no glows.
+   Art direction: dark developer tool. Neutral surfaces, teal accent.
+   Typography: Plus Jakarta Sans (display/titles) + Inter (body/UI)
    ================================================================ */
 
 :root {
@@ -50,10 +52,14 @@
     --sidebar-width: 288px;
     --topbar-height: 56px;
 
-    /* Font */
-    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-    --font-title: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Fonts:
+       --font-display  = Plus Jakarta Sans — titles, headings, logo text (24px+)
+       --font-sans     = Inter — all body copy, UI labels, buttons (16px and below)
+       --font-mono     = JetBrains Mono — code, SQL, schema viewer
+    */
+    --font-display: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 }
 
 /* Base */
@@ -122,18 +128,20 @@ html, body {
     gap: 10px;
 }
 
-/* Logo icon — replace emoji gradient with clean SVG-ready box */
 .logo-icon {
-    font-size: 16px;
+    display: flex;
+    align-items: center;
     color: var(--accent);
-    filter: none;
+    flex-shrink: 0;
 }
 
+/* Logo text uses display font — the one place in the sidebar it appears */
 .logo-text {
+    font-family: var(--font-display);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: -0.2px;
+    letter-spacing: -0.3px;
 }
 
 .sidebar-close {
@@ -192,8 +200,9 @@ html, body {
 }
 
 .upload-icon {
-    font-size: 22px;
-    margin-bottom: 6px;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 8px;
     color: var(--text-secondary);
     transition: color var(--ease);
 }
@@ -246,7 +255,6 @@ html, body {
     gap: 7px;
 }
 
-/* Remove emoji dataset prefix — handled by clean icon below */
 .dataset-name::before { content: none; }
 
 .dataset-chevron {
@@ -426,12 +434,13 @@ html, body {
 
 .top-title { flex: 1; }
 
-/* Clean text title — no gradient */
+/* Display font for the top bar title — distinct from body copy */
 .top-title h1 {
+    font-family: var(--font-display);
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: -0.2px;
+    letter-spacing: -0.3px;
     background: none;
     -webkit-background-clip: unset;
     -webkit-text-fill-color: unset;
@@ -511,13 +520,15 @@ html, body {
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-/* Clean heading — no gradient */
+/* Display font at welcome — the strongest typographic moment on the page */
 .welcome-title {
-    font-size: 22px;
-    font-weight: 700;
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 800;
     color: var(--text-primary);
-    margin-bottom: 8px;
-    letter-spacing: -0.4px;
+    margin-bottom: 10px;
+    letter-spacing: -0.6px;
+    line-height: 1.2;
     background: none;
     -webkit-background-clip: unset;
     -webkit-text-fill-color: unset;
@@ -556,7 +567,7 @@ html, body {
 
 .file-badge:hover { border-color: var(--border-bright); color: var(--text-primary); }
 
-.badge-dot { width: 5px; height: 5px; border-radius: 50%; box-shadow: none; }
+.badge-dot { width: 5px; height: 5px; border-radius: 50%; box-shadow: none; flex-shrink: 0; }
 
 .csv-badge .badge-dot  { background: var(--success); }
 .xls-badge .badge-dot  { background: var(--accent); }
@@ -581,10 +592,10 @@ html, body {
     box-shadow: var(--shadow-lg);
 }
 
-/* Static upload icon — no bounce animation */
 .upload-cta-icon {
-    font-size: 32px;
-    margin-bottom: 12px;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 14px;
     color: var(--text-muted);
 }
 
@@ -757,7 +768,7 @@ html, body {
     transition: border-color var(--ease);
 }
 
-/* Remove colored left border — use top accent instead */
+/* Top accent stripe instead of colored left border */
 .agent-result-card.success { border-top: 2px solid var(--success); }
 .agent-result-card.error   { border-top: 2px solid var(--error); }
 
@@ -1038,7 +1049,9 @@ html, body {
 
 @keyframes scaleUp { from { transform: scale(0.97); opacity: 0; } to { transform: none; opacity: 1; } }
 
+/* Modal title uses display font */
 .modal-title {
+    font-family: var(--font-display);
     font-size: 20px;
     font-weight: 700;
     color: var(--text-primary);
@@ -1128,7 +1141,7 @@ html, body {
 #apiKeyInput:focus { border-color: var(--accent-border); }
 #apiKeyInput::placeholder { color: var(--text-muted); }
 
-.key-toggle-btn {
+.toggle-visibility {
     position: absolute;
     right: 10px;
     top: 50%;
@@ -1137,14 +1150,23 @@ html, body {
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 14px;
     padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: color var(--ease);
 }
 
-.key-toggle-btn:hover { color: var(--text-secondary); }
+.toggle-visibility:hover { color: var(--text-secondary); }
 
-.modal-save-btn {
+.modal-error {
+    font-size: 12px;
+    color: var(--error);
+    min-height: 18px;
+    margin-bottom: 8px;
+}
+
+.modal-submit {
     width: 100%;
     padding: 10px;
     background: var(--accent);
@@ -1155,20 +1177,31 @@ html, body {
     font-weight: 700;
     cursor: pointer;
     transition: opacity var(--ease);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
-.modal-save-btn:hover { opacity: 0.88; }
+.modal-submit:hover { opacity: 0.88; }
 
-.modal-status {
-    font-size: 12px;
+.modal-spinner { font-size: 14px; }
+
+.modal-note {
+    font-size: 11px;
     color: var(--text-muted);
-    margin-top: 10px;
+    margin-top: 12px;
     text-align: center;
-    min-height: 18px;
+    line-height: 1.5;
 }
 
-.modal-status.success { color: var(--success); }
-.modal-status.error   { color: var(--error); }
+.modal-note code {
+    font-family: var(--font-mono);
+    background: var(--surface-hover);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 10px;
+}
 
 /* ================================================================
    LOADING / SKELETON / SPINNER
@@ -1203,6 +1236,32 @@ html, body {
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
     border-radius: var(--radius-sm);
+}
+
+.upload-progress {
+    padding: 8px 0 4px;
+}
+
+.upload-progress-bar {
+    height: 3px;
+    background: var(--accent);
+    border-radius: 99px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.upload-progress-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 5px;
+    text-align: center;
+}
+
+.schema-loading {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 8px 0;
+    text-align: center;
 }
 
 /* ================================================================
