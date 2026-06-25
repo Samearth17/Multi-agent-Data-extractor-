@@ -16,10 +16,6 @@ load_dotenv(_env_path)
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# ---------------------------------------------------------------------------
-# Provider helpers
-# ---------------------------------------------------------------------------
-
 def get_available_providers() -> list[tuple[str, str]]:
     providers = []
     if os.getenv("GOOGLE_API_KEY"):
@@ -32,7 +28,6 @@ def get_available_providers() -> list[tuple[str, str]]:
         providers.append(("nvidia", "meta/llama-3.3-70b-instruct"))
         providers.append(("nvidia", "deepseek-ai/deepseek-v3"))
     return providers
-
 
 def detect_provider() -> tuple[str, str]:
     available = get_available_providers()
@@ -58,25 +53,15 @@ def get_provider_status() -> dict:
 def _build_llm(provider: str, model: str):
     if provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(
-            model=model, temperature=0,
-            google_api_key=os.getenv("GOOGLE_API_KEY")
-        )
+        return ChatGoogleGenerativeAI(model=model, temperature=0, google_api_key=os.getenv("GOOGLE_API_KEY"))
     elif provider == "groq":
         from langchain_groq import ChatGroq
         return ChatGroq(model=model, temperature=0, api_key=os.getenv("GROQ_API_KEY"))
     elif provider == "nvidia":
         from langchain_nvidia_ai_endpoints import ChatNVIDIA
-        return ChatNVIDIA(
-            model=model, temperature=0,
-            nvidia_api_key=os.getenv("NVIDIA_API_KEY")
-        )
+        return ChatNVIDIA(model=model, temperature=0, nvidia_api_key=os.getenv("NVIDIA_API_KEY"))
     raise ValueError(f"Unknown provider: {provider}")
 
-
-# ---------------------------------------------------------------------------
-# System prompt builder
-# ---------------------------------------------------------------------------
 
 def _build_system_prompt(focus_tables: list[str] = None) -> str:
     tables = focus_tables if focus_tables else get_all_tables()
@@ -96,7 +81,7 @@ def _build_system_prompt(focus_tables: list[str] = None) -> str:
 
     table_list = ", ".join(f"`{t}`" for t in tables)
 
-    return f"""You are an AI data analyst. You can query any of the available tables.
+    return f"""You are AI data analyst. You can query any of the available tables.
 
 ## Available Tables
 {table_list}
@@ -104,163 +89,154 @@ def _build_system_prompt(focus_tables: list[str] = None) -> str:
 ## Schemas
 {schema_text}
 
+
 ## Extra context
 {agents_md[:1500]}
 """
 
+def _run_deepagents(question: str, llm, focus_tables: list[str] = None) -> dict:
+    from deepagents import create_deep_agent
+    from deepagents.backends import FilesystemBackend
+    from backend.db import get_schema_prompt
 
-# ---------------------------------------------------------------------------
-# Markdown table parser  (used by agents.py too)
-# ---------------------------------------------------------------------------
-
-def _parse_markdown_table(text: str) -> dict:
-    """Parse a markdown table in *text* and return {columns, data, ...}."""
-    if not text:
-        return {"data": [], "columns": [], "chart_type": None,
-                "numeric_columns": [], "label_column": None}
-
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    header_idx = None
-    for i, line in enumerate(lines):
-        if line.startswith("|") and i + 1 < len(lines) and re.match(r"^\|[\s\-\|]+\|$", lines[i + 1]):
-            header_idx = i
-            break
-
-    if header_idx is None:
-        return {"data": [], "columns": [], "chart_type": None,
-                "numeric_columns": [], "label_column": None}
-
-    headers = [h.strip() for h in lines[header_idx].strip("|").split("|")]
-    data_rows = []
-    for line in lines[header_idx + 2:]:
-        if not line.startswith("|"):
-            break
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) == len(headers):
-            data_rows.append(dict(zip(headers, cells)))
-
-    numeric_cols = []
-    for col in headers:
-        vals = []
-        for row in data_rows:
-            v = row.get(col, "")
-            try:
-                float(str(v).replace(",", ""))
-                vals.append(True)
-            except ValueError:
-                vals.append(False)
-        if vals and all(vals):
-            numeric_cols.append(col)
-
-    label_col = next((h for h in headers if h not in numeric_cols), None)
-    chart_type = "bar" if numeric_cols else None
-
-    return {
-        "data": data_rows,
-        "columns": headers,
-        "chart_type": chart_type,
-        "numeric_columns": numeric_cols,
-        "label_column": label_col,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Main agent – SQL agent via LangChain
-# ---------------------------------------------------------------------------
-
-_agent_cache: dict = {}
-
-
-def reset_agent():
-    """Invalidate the cached SQL agent so the next call re-builds it."""
-    global _agent_cache
-    _agent_cache = {}
-
-
-def _get_or_build_agent(provider: str, model: str, focus_tables: list[str] = None):
-    cache_key = (provider, model, tuple(sorted(focus_tables or [])))
-    if cache_key in _agent_cache:
-        return _agent_cache[cache_key]
-
-    llm = _build_llm(provider, model)
-    db  = SQLDatabase(engine)
+    tables = focus_tables if focus_tables else get_all_tables()
+    db = SQLDatabase(engine,
+        sample_rows_in_table_info=2,
+        include_tables=tables if tables else None,
+    )
     toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-    system_message = _build_system_prompt(focus_tables)
+    sql_tools = toolkit.get_tools()
+
+    agent = create_deep_agent(
+        model=llm,
+        memory=[os.path.join(BASE_DIR, "AGENTS.md")],
+        tools=sql_tools,
+        subagents=[],
+        backend=FilesystemBackend(root_dir=BASE_DIR, virtual_mode=False),
+    )
+
+    system_prompt = _build_system_prompt(focus_tables=focus_tables)
+    result = agent.invoke({"messages": [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": question}
+    ]})
+    final_msg = result["messages"][-1]
+
+    content = getattr(final_msg, "content", str(final_msg))
+    if isinstance(content, list):
+        answer = "\n".join([block.get("text", "") for block in content if isinstance(block, dict) and block.get("type") == "text"])
+    else:
+        answer = str(content)
+
+    sql = _extract_sql_from_messages(result["messages"])
+    return {"answer": answer, "sql": sql, "tabular": _parse_markdown_table(answer)}
+
+def _run_direct_sql_agent(question: str, llm, focus_tables: list[str] = None) -> dict:
+    tables = focus_tables if focus_tables else get_all_tables()
+    db = SQLDatabase(engine,
+        sample_rows_in_table_info=2,
+        include_tables=tables if tables else None,
+    )
+
+    system_msg = _build_system_prompt(focus_tables=focus_tables)
+    toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+
     agent = create_sql_agent(
         llm=llm,
         toolkit=toolkit,
-        agent_type="openai-tools",
         verbose=False,
-        system_message=system_message,
+        agent_type="tool-calling",
+        system_message=system_msg,
+        max_iterations=12,
         handle_parsing_errors=True,
     )
-    _agent_cache[cache_key] = agent
-    return agent
+    try:
+        result = agent.invoke({"input": question})
+        answer = result.get("output", str(result))
+
+        # Extract SQL from intermediate steps
+        sql = ""
+        for step in reversed(result.get("intermediate_steps", [])):
+            if isinstance(step, (list, tuple)) and len(step) >= 1:
+                action = step[0]
+                if hasattr(action, "tool_input"):
+                    ti = action.tool_input
+                    query = ti.get("query", "") if isinstance(ti, dict) else str(ti)
+                    if query.strip().upper().startswith("SELECT"):
+                        sql = query.strip().rstrip(";")
+                        break
+
+        return {
+            "answer": answer,
+            "sql": sql,
+            "tabular": _parse_markdown_table(answer)
+        }
+    except Exception as e:
+        print(f"[direct-sql] Agent execution failed: {e}")
+        return {
+            "answer": f"I encountered an error while analyzing the data: {str(e)}",
+            "sql": "",
+            "tabular": {"data": [], "columns": []}
+        }
 
 
-def run_graph_agent(question: str, focus_tables: list[str] = None) -> dict:
-    """
-    Run a natural-language question against the database using LangChain SQL agent.
-    Returns a standardised result dict.
-    """
-    load_dotenv(_env_path, override=True)
+_cache: dict = {"provider": None, "model": None}
+
+
+def reset_agent():
+    _cache.update({"provider": None, "model": None})
+
+
+def run_graph_agent(question: str) -> dict:
     start = time.time()
+    load_dotenv(_env_path, override=True)
 
-    tables = focus_tables if focus_tables else get_all_tables()
+    if not get_provider_status()["any_configured"]:
+        return {
+            "status": "no_api_key",
+            "sql": "",
+            "result": {
+                "type": "setup_required",
+                "message": "No API key configured. Add GOOGLE_API_KEY or GROQ_API_KEY to your .env file.",
+            },
+            "attempts": 0, "elapsed": 0.0, "provider": None,
+        }
+
+    tables = get_all_tables()
     if not tables:
         return {
             "status": "no_data",
             "sql": "",
             "result": {
-                "type": "message",
-                "message": "No data uploaded yet. Please upload a file first.",
+                "type": "no_data",
+                "message": "No data uploaded yet. Please upload a CSV file first.",
             },
-            "elapsed": 0.0,
+            "attempts": 0, "elapsed": 0.0, "provider": None,
         }
 
-    available = get_available_providers()
-    if not available:
-        return {
-            "status": "no_api_key",
-            "sql": "",
-            "result": {
-                "type": "message",
-                "message": (
-                    "No API key configured. "
-                    "Please add a GOOGLE_API_KEY or GROQ_API_KEY in the settings panel."
-                ),
-            },
-            "elapsed": 0.0,
-        }
+    available_providers = get_available_providers()
 
-    last_error = ""
-    for provider, model in available:
+    last_error = "Unknown error"
+
+    for provider, model_name in available_providers:
         try:
-            agent = _get_or_build_agent(provider, model, focus_tables)
-            result = agent.invoke({"input": question})
-            answer = result.get("output", str(result))
+            _cache.update({"provider": provider, "model": model_name})
+            print(f"Attempting with: {provider} ({model_name}) | Tables: {tables}")
 
-            # Extract SQL from intermediate steps
-            sql = ""
-            for step in reversed(result.get("intermediate_steps", [])):
-                if isinstance(step, (list, tuple)) and len(step) >= 1:
-                    action = step[0]
-                    if hasattr(action, "tool_input"):
-                        ti = action.tool_input
-                        q  = ti.get("query", "") if isinstance(ti, dict) else str(ti)
-                        if q.strip().upper().startswith("SELECT"):
-                            sql = q.strip().rstrip(";")
-                            break
+            llm = _build_llm(provider, model_name)
 
-            tabular = _parse_markdown_table(answer)
+            # Use direct SQL agent for all providers to ensure stable parsing
+            data = _run_direct_sql_agent(question, llm)
+
             elapsed = round(time.time() - start, 2)
+            tabular = data["tabular"]
 
             return {
                 "status": "success",
-                "sql": sql,
+                "sql": data["sql"],
                 "result": {
                     "type": "answer",
-                    "answer": answer,
+                    "answer": data["answer"],
                     "data": tabular.get("data", []),
                     "columns": tabular.get("columns", []),
                     "row_count": len(tabular.get("data", [])),
@@ -268,41 +244,106 @@ def run_graph_agent(question: str, focus_tables: list[str] = None) -> dict:
                     "numeric_columns": tabular.get("numeric_columns", []),
                     "label_column": tabular.get("label_column"),
                 },
+                "attempts": 1,
                 "elapsed": elapsed,
                 "provider": provider,
             }
 
         except Exception as e:
-            last_error = str(e)
-            print(f"[graph] Provider {provider}/{model} failed: {last_error[:200]}")
-            # Invalidate cache for this provider on failure
-            cache_key = (provider, model, tuple(sorted(focus_tables or [])))
-            _agent_cache.pop(cache_key, None)
+            err = str(e)
+            last_error = err
+            print(f"Provider {provider} failed: {err[:200]}")
             continue
 
     elapsed = round(time.time() - start, 2)
     return {
         "status": "error",
         "sql": "",
-        "result": {
-            "type": "message",
-            "message": _friendly_error(last_error),
-        },
-        "elapsed": elapsed,
+        "result": {"type": "error", "message": f"All providers failed. Last error: {last_error}", "data": [], "columns": []},
+        "attempts": len(available_providers), "elapsed": elapsed, "message": last_error,
     }
 
 
-def _friendly_error(err: str) -> str:
-    e = err.lower()
-    if "429" in err or "quota" in e or "resource_exhausted" in e:
-        return (
-            "Rate limit reached on the AI provider. "
-            "Wait 30–60 seconds and try again, or switch to a different provider."
-        )
-    if "api key" in e or "authentication" in e or "invalid" in e:
-        return "Invalid or missing API key. Please update your key in the settings panel."
-    if "no such table" in e:
-        return "The requested table does not exist. Try re-uploading your file."
-    if "timeout" in e:
-        return "The request timed out. Try a simpler question or a smaller dataset."
-    return f"Agent error: {err[:300]}"
+def _extract_sql_from_messages(messages) -> str:
+    for msg in reversed(messages):
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                args = tc.get("args", {}) if isinstance(tc, dict) else {}
+                q = args.get("query", "")
+                if q and q.strip().upper().startswith("SELECT"):
+                    return q.strip().rstrip(";")
+        content = getattr(msg, "content", "")
+        if not isinstance(content, str):
+            continue
+        m = re.search(r"```sql\s*\n?(.*?)```", content, re.DOTALL | re.IGNORECASE)
+        if m:
+            return m.group(1).strip().rstrip(";")
+    return ""
+
+
+def _parse_markdown_table(text: str) -> dict:
+    """
+    Parse a markdown table from LLM output into structured data.
+
+    Key fixes:
+    - len(lines) < 2 instead of < 3: single-row result tables are no longer
+      silently discarded (header + separator = 2 lines minimum).
+    - String values use the original cell text on numeric parse failure,
+      so values like "New York, NY" are not mangled to "New York NY".
+    """
+    empty = {"data": [], "columns": [], "chart_type": None, "numeric_columns": [], "label_column": None}
+    if isinstance(text, list):
+        text = "\n".join([str(m) for m in text])
+    if not isinstance(text, str):
+        text = str(text)
+
+    lines = [l for l in text.split("\n") if "|" in l]
+
+    # FIX: was < 3, which dropped every 1-row result.
+    # A valid markdown table only needs header + separator (2 lines).
+    if len(lines) < 2:
+        return empty
+
+    try:
+        headers = [h.strip() for h in lines[0].strip("|").split("|") if h.strip()]
+        data = []
+        for line in lines[2:]:
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) != len(headers):
+                continue
+            row = {}
+            for i, h in enumerate(headers):
+                raw = cells[i].strip()
+                # Strip commas/$  only for numeric conversion attempt.
+                # On failure, restore the original `raw` string so values like
+                # "New York, NY" are not silently corrupted.
+                val = raw.replace(",", "").replace("$", "").strip()
+                try:
+                    row[h] = int(val)
+                except ValueError:
+                    try:
+                        row[h] = round(float(val), 2)
+                    except ValueError:
+                        row[h] = raw  # preserve original
+            data.append(row)
+
+        if not data:
+            return empty
+
+        numeric = [c for c in headers if all(isinstance(r.get(c), (int, float)) for r in data)]
+        labels  = [c for c in headers if c not in numeric]
+
+        label_col  = labels[0] if labels else (numeric[0] if numeric else None)
+        value_cols = [c for c in numeric if c != label_col] if not labels else numeric
+
+        chart = ("doughnut" if len(data) <= 6 else "bar") if label_col and value_cols else None
+
+        return {
+            "data": data,
+            "columns": headers,
+            "chart_type": chart,
+            "numeric_columns": value_cols,
+            "label_column": label_col,
+        }
+    except Exception:
+        return empty
