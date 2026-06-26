@@ -270,24 +270,26 @@ function setupEventListeners() {
         if (chip) { queryInput.value = chip.dataset.query; handleSend(); }
     });
 
-    menuBtn.addEventListener('click', () => { sidebar.classList.toggle('collapsed'); sidebar.classList.toggle('open'); });
-    sidebarClose.addEventListener('click', () => { sidebar.classList.add('collapsed'); sidebar.classList.remove('open'); });
+    menuBtn?.addEventListener('click', () => { sidebar.classList.toggle('collapsed'); sidebar.classList.toggle('open'); });
+    sidebarClose?.addEventListener('click', () => { sidebar.classList.add('collapsed'); sidebar.classList.remove('open'); });
 
-    uploadZone.addEventListener('click', () => csvFileInput.click());
-    attachBtn.addEventListener('click', () => csvFileInput.click());
+    // FIX: guard uploadZone and attachBtn with optional chaining so a missing
+    // element does not throw and abort the rest of setupEventListeners().
+    uploadZone?.addEventListener('click', () => csvFileInput?.click());
+    attachBtn?.addEventListener('click', () => csvFileInput?.click());
     uploadCtaBtn?.addEventListener('click', () => {
         sidebar.classList.remove('collapsed');
         sidebar.classList.add('open');
-        csvFileInput.click();
+        csvFileInput?.click();
     });
 
-    csvFileInput.addEventListener('change', e => {
+    csvFileInput?.addEventListener('change', e => {
         if (e.target.files[0]) uploadFile(e.target.files[0]);
         e.target.value = '';
     });
-    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
-    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
-    uploadZone.addEventListener('drop', e => {
+    uploadZone?.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone?.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone?.addEventListener('drop', e => {
         e.preventDefault();
         uploadZone.classList.remove('dragover');
         const file = e.dataTransfer.files[0];
@@ -476,6 +478,7 @@ function addAssistantResponse(data) {
 }
 
 function renderTable(columns, data) {
+    if (!columns || !columns.length || !data || !data.length) return '';
     let html = '<div class="result-table-wrapper"><table class="result-table"><thead><tr>';
     for (const col of columns) html += `<th>${esc(col)}</th>`;
     html += '</tr></thead><tbody>';
@@ -493,13 +496,23 @@ function renderTable(columns, data) {
 function renderChart(chartId, result) {
     const canvas = document.getElementById(chartId);
     if (!canvas) return;
+    if (!result.data || !result.label_column || !result.numeric_columns || !result.numeric_columns.length) return;
+
     const labels = result.data.map(r => String(r[result.label_column]));
     const numCol = result.numeric_columns[0];
     const values = result.data.map(r => Number(r[numCol]) || 0);
-    const palette = [
-        'purple', 'rgba(168,85,247,0.8)', 'rgba(6,182,212,0.8)',
-        'rgba(16,185,129,0.8)', 'rgba(245,158,11,0.8)', 'rgba(239,68,68,0.8)',
 
+    // FIX: was ['purple', ...] — 'purple' is a CSS keyword with no '0.8' to
+    // replace, so bg.map(c => c.replace('0.8', '1')) left it as 'purple' for
+    // borderColor and caused Chart.js to silently fail on datasets index 0.
+    // All entries are now consistent rgba() strings.
+    const palette = [
+        'rgba(168,85,247,0.8)',
+        'rgba(6,182,212,0.8)',
+        'rgba(16,185,129,0.8)',
+        'rgba(245,158,11,0.8)',
+        'rgba(239,68,68,0.8)',
+        'rgba(59,130,246,0.8)',
     ];
     const bg = values.map((_, i) => palette[i % palette.length]);
     const ctype = result.data.length <= 6 ? 'doughnut' : (result.chart_type || 'bar');
