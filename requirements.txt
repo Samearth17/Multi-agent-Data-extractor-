@@ -6,11 +6,11 @@ python-dotenv==1.0.1
 python-multipart==0.0.20
 PyPDF2==3.0.1
 openpyxl==3.1.5
-langgraph==0.2.60
-langchain-core==0.3.28
-langchain-community==0.3.13
+langgraph==0.3.5
+langchain-core==0.3.65
+langchain-community==0.3.24
 langchain-google-genai==2.1.5
 groq==0.13.1
-langchain-groq==0.2.3
+langchain-groq==0.3.2
 rich==13.9.4
 langchain-nvidia-ai-endpoints==0.3.9
