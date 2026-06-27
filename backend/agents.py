@@ -157,7 +157,6 @@ def get_tables_for_agent(agent_id: str) -> list[str]:
 
 # ---------------------------------------------------------------------------
 # AGENT PROMPT — schema cap raised from 2 000 to 6 000 chars
-# This was the root cause of extraction failures on real datasets.
 # ---------------------------------------------------------------------------
 
 def _build_agent_prompt(agent_id: str, question: str, focus_tables: list[str] = None) -> str:
@@ -168,8 +167,6 @@ def _build_agent_prompt(agent_id: str, question: str, focus_tables: list[str] = 
 
     role = _get_role_prompt(agent_id)
 
-    # Raised from 2 000 to 6 000 — small models can handle this; truncation was
-    # silently cutting schemas mid-table, causing column-name hallucinations.
     if len(schema_text) > 6000:
         schema_text = schema_text[:6000] + "\n... (schema truncated)"
 
@@ -228,6 +225,162 @@ def _get_role_prompt(agent_id: str) -> str:
         ),
     }
     return prompts.get(agent_id, "Analyze the data and provide insights.")
+
+
+# ---------------------------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------------------------
+
+def _extract_text_content(value) -> str:
+    """
+    Safely extract a plain string from an LLM response value.
+
+    Newer versions of langchain-google-genai (and other providers) return
+    message.content as a list of dicts like:
+        [{"type": "text", "text": "..."}, ...]
+    instead of a plain string. Treating that list like a string causes
+    'function object is not subscriptable' errors everywhere downstream.
+
+    This helper normalises any such value to a plain str.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = []
+        for block in value:
+            if isinstance(block, dict):
+                parts.append(block.get("text", ""))
+            else:
+                parts.append(str(block))
+        return "\n".join(parts)
+    return str(value)
+
+
+def _is_raw_tool_output(text: str) -> bool:
+    markers = [
+        '"sql_db_query"', '<|python_tag|>', '"tool_input"',
+        '{"type": "function"', 'import json', 'import pandas', '```python',
+    ]
+    return any(m in text for m in markers)
+
+
+def _is_unhelpful_answer(text: str) -> bool:
+    t = text.strip().lower()
+    refusals = [
+        "i don't know", "i do not know", "i cannot", "i can't",
+        "unable to", "no information", "no data available",
+        "i don't have access", "i'm not able",
+    ]
+    return len(t) < 300 and any(r in t for r in refusals)
+
+
+def _direct_sql_fallback(question: str, tables: list[str]) -> tuple[str, dict]:
+    """Run a simple SELECT * LIMIT 20 against the first table as a last resort."""
+    try:
+        from sqlalchemy import text
+        from backend.db import engine
+        if not tables:
+            return "No tables are available to query.", {"data": [], "columns": []}
+        t = tables[0]
+        with engine.connect() as conn:
+            res = conn.execute(text(f'SELECT * FROM "{t}" LIMIT 20'))
+            rows = [dict(r._mapping) for r in res]
+        if not rows:
+            return f"The table `{t}` is empty — no data to extract.", {"data": [], "columns": []}
+        cols = list(rows[0].keys())
+        md  = "| " + " | ".join(cols) + " |\n"
+        md += "|" + "|".join(["---"] * len(cols)) + "|\n"
+        for row in rows:
+            md += "| " + " | ".join(str(row.get(c, "")) for c in cols) + " |\n"
+        answer = f"*(Direct query fallback — showing raw results from `{t}`:)*\n\n{md}"
+        tabular = _parse_markdown_table(md)
+        if not tabular.get("data"):
+            tabular = {"data": rows, "columns": cols}
+        return answer, tabular
+    except Exception as e:
+        return f"Data extraction failed: {e}", {"data": [], "columns": []}
+
+
+def _salvage_from_error(err_str: str, tables: list[str]) -> str:
+    if "quota" in err_str.lower() or "429" in err_str or "rate" in err_str.lower():
+        return "The AI provider is rate-limited. Please wait a moment and try again."
+    if "api key" in err_str.lower() or "authentication" in err_str.lower():
+        return "Invalid or missing API key. Please update your API key in settings."
+    return f"The extraction agent encountered an error: {err_str[:200]}"
+
+
+def _salvage_from_raw_output(answer: str, tables: list[str], result: dict) -> tuple[str, dict | None]:
+    sql_match = re.search(
+        r'(?i)["\']query["\']\\s*:\\s*["\']([^"\']*(?:SELECT|WITH)[^"\']+)["\']', answer
+    )
+    if not sql_match:
+        sql_match = re.search(
+            r'(?i)(?:SELECT|WITH)\\s+.*?(?:FROM|LIMIT).*?(?:["\']|\\n|;|$)', answer, re.DOTALL
+        )
+
+    if sql_match:
+        extracted_sql = (sql_match.group(1) if sql_match.lastindex else sql_match.group(0))
+        extracted_sql = extracted_sql.replace('\\"', '"').strip('"\n;')
+        try:
+            from sqlalchemy import text
+            from backend.db import engine
+            with engine.connect() as conn:
+                res  = conn.execute(text(extracted_sql))
+                rows = [dict(r._mapping) for r in res]
+            if rows:
+                cols = list(rows[0].keys())
+                md   = "| " + " | ".join(cols) + " |\n"
+                md  += "|" + "|".join(["---"] * len(cols)) + "|\n"
+                for r in rows[:15]:
+                    md += "| " + " | ".join(str(r.get(c, "")) for c in cols) + " |\n"
+                tabular = _parse_markdown_table(md)
+                if not tabular.get("data"):
+                    tabular = {"data": rows, "columns": cols}
+                return md, tabular
+            else:
+                return "The SQL query executed but returned 0 rows.", None
+        except Exception as e:
+            return f"Could not execute extracted SQL: {e}", None
+
+    if "sql_db_schema" in answer or "sql_db_list_tables" in answer:
+        return (
+            "The AI model got stuck inspecting the schema instead of answering. "
+            "Try rephrasing as a more specific SQL question (e.g. 'Show me all rows from the table').",
+            None,
+        )
+    return (
+        "The AI returned raw tool-call output instead of a natural language answer. "
+        "Please try a simpler question.",
+        None,
+    )
+
+
+def _extract_sql_from_steps(steps: list) -> str:
+    for step in reversed(steps):
+        if isinstance(step, (list, tuple)) and len(step) >= 1:
+            action = step[0]
+            if hasattr(action, "tool_input"):
+                ti    = action.tool_input
+                query = ti.get("query", "") if isinstance(ti, dict) else str(ti)
+                if query.strip().upper().startswith("SELECT"):
+                    return query.strip().rstrip(";")
+    return ""
+
+
+def _friendly_error(err: str) -> str:
+    e = err.lower()
+    if "429" in err or "quota" in e or "resource_exhausted" in e:
+        return (
+            "Rate limit reached on the AI provider. "
+            "Wait 30–60 seconds then try again, or switch to a different provider."
+        )
+    if "401" in err or "api key" in e or "authentication" in e:
+        return "Invalid API key. Please update your key in settings."
+    if "timeout" in e:
+        return "The request timed out. The data may be too large — try a more specific question."
+    if "connection" in e or "network" in e:
+        return "Network error. Check your internet connection and try again."
+    return f"Extraction failed: {err[:250]}"
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +461,12 @@ def run_agent_query(agent_id: str, question: str, focus_tables: list[str] = None
                 else:
                     raise
 
+            # FIX: safely extract string content from agent output.
+            # Newer LangChain versions may return answer as a list of dicts
+            # (e.g. [{"type": "text", "text": "..."}]) instead of a plain string,
+            # which causes "'function' object is not subscriptable" downstream.
+            answer = _extract_text_content(answer)
+
             tabular = None
 
             if isinstance(answer, str) and _is_raw_tool_output(answer):
@@ -323,8 +482,6 @@ def run_agent_query(agent_id: str, question: str, focus_tables: list[str] = None
             if not tabular:
                 tabular = _parse_markdown_table(answer)
 
-            # Final safety: if tabular is still empty but we have an answer, run
-            # a direct raw fallback so the frontend always has data to display.
             if not tabular.get("data") and tables:
                 print(f"[{agent_id}] tabular empty after parse — running direct SQL fallback")
                 _, fallback_tabular = _direct_sql_fallback(question, tables)
@@ -368,137 +525,6 @@ def run_agent_query(agent_id: str, question: str, focus_tables: list[str] = None
 
 
 # ---------------------------------------------------------------------------
-# HELPERS
-# ---------------------------------------------------------------------------
-
-def _is_raw_tool_output(text: str) -> bool:
-    markers = [
-        '"sql_db_query"', '<|python_tag|>', '"tool_input"',
-        '{"type": "function"', 'import json', 'import pandas', '```python',
-    ]
-    return any(m in text for m in markers)
-
-
-def _is_unhelpful_answer(text: str) -> bool:
-    t = text.strip().lower()
-    refusals = [
-        "i don't know", "i do not know", "i cannot", "i can't",
-        "unable to", "no information", "no data available",
-        "i don't have access", "i'm not able",
-    ]
-    return len(t) < 300 and any(r in t for r in refusals)
-
-
-def _direct_sql_fallback(question: str, tables: list[str]) -> tuple[str, dict]:
-    """Run a simple SELECT * LIMIT 20 against the first table as a last resort."""
-    try:
-        from sqlalchemy import text
-        from backend.db import engine
-        if not tables:
-            return "No tables are available to query.", {"data": [], "columns": []}
-        t = tables[0]
-        with engine.connect() as conn:
-            res = conn.execute(text(f'SELECT * FROM "{t}" LIMIT 20'))
-            rows = [dict(r._mapping) for r in res]
-        if not rows:
-            return f"The table `{t}` is empty — no data to extract.", {"data": [], "columns": []}
-        cols = list(rows[0].keys())
-        md  = "| " + " | ".join(cols) + " |\n"
-        md += "|" + "|".join(["---"] * len(cols)) + "|\n"
-        for row in rows:
-            md += "| " + " | ".join(str(row.get(c, "")) for c in cols) + " |\n"
-        answer = f"*(Direct query fallback — showing raw results from `{t}`:)*\n\n{md}"
-        tabular = _parse_markdown_table(md)
-        if not tabular.get("data"):
-            tabular = {"data": rows, "columns": cols}
-        return answer, tabular
-    except Exception as e:
-        return f"Data extraction failed: {e}", {"data": [], "columns": []}
-
-
-def _salvage_from_error(err_str: str, tables: list[str]) -> str:
-    if "quota" in err_str.lower() or "429" in err_str or "rate" in err_str.lower():
-        return "The AI provider is rate-limited. Please wait a moment and try again."
-    if "api key" in err_str.lower() or "authentication" in err_str.lower():
-        return "Invalid or missing API key. Please update your API key in settings."
-    return f"The extraction agent encountered an error: {err_str[:200]}"
-
-
-def _salvage_from_raw_output(answer: str, tables: list[str], result: dict) -> tuple[str, dict | None]:
-    sql_match = re.search(
-        r'(?i)["\']query["\']\s*:\s*["\']([^"\']*(?:SELECT|WITH)[^"\']+)["\']', answer
-    )
-    if not sql_match:
-        sql_match = re.search(
-            r'(?i)(?:SELECT|WITH)\s+.*?(?:FROM|LIMIT).*?(?:["\']|\n|;|$)', answer, re.DOTALL
-        )
-
-    if sql_match:
-        extracted_sql = (sql_match.group(1) if sql_match.lastindex else sql_match.group(0))
-        extracted_sql = extracted_sql.replace('\\"', '"').strip('"\n;')
-        try:
-            from sqlalchemy import text
-            from backend.db import engine
-            with engine.connect() as conn:
-                res  = conn.execute(text(extracted_sql))
-                rows = [dict(r._mapping) for r in res]
-            if rows:
-                cols = list(rows[0].keys())
-                md   = "| " + " | ".join(cols) + " |\n"
-                md  += "|" + "|".join(["---"] * len(cols)) + "|\n"
-                for r in rows[:15]:
-                    md += "| " + " | ".join(str(r.get(c, "")) for c in cols) + " |\n"
-                tabular = _parse_markdown_table(md)
-                if not tabular.get("data"):
-                    tabular = {"data": rows, "columns": cols}
-                return md, tabular
-            else:
-                return "The SQL query executed but returned 0 rows.", None
-        except Exception as e:
-            return f"Could not execute extracted SQL: {e}", None
-
-    if "sql_db_schema" in answer or "sql_db_list_tables" in answer:
-        return (
-            "The AI model got stuck inspecting the schema instead of answering. "
-            "Try rephrasing as a more specific SQL question (e.g. 'Show me all rows from the table').",
-            None,
-        )
-    return (
-        "The AI returned raw tool-call output instead of a natural language answer. "
-        "Please try a simpler question.",
-        None,
-    )
-
-
-def _extract_sql_from_steps(steps: list) -> str:
-    for step in reversed(steps):
-        if isinstance(step, (list, tuple)) and len(step) >= 1:
-            action = step[0]
-            if hasattr(action, "tool_input"):
-                ti    = action.tool_input
-                query = ti.get("query", "") if isinstance(ti, dict) else str(ti)
-                if query.strip().upper().startswith("SELECT"):
-                    return query.strip().rstrip(";")
-    return ""
-
-
-def _friendly_error(err: str) -> str:
-    e = err.lower()
-    if "429" in err or "quota" in e or "resource_exhausted" in e:
-        return (
-            "Rate limit reached on the AI provider. "
-            "Wait 30–60 seconds then try again, or switch to a different provider."
-        )
-    if "401" in err or "api key" in e or "authentication" in e:
-        return "Invalid API key. Please update your key in settings."
-    if "timeout" in e:
-        return "The request timed out. The data may be too large — try a more specific question."
-    if "connection" in e or "network" in e:
-        return "Network error. Check your internet connection and try again."
-    return f"Extraction failed: {err[:250]}"
-
-
-# ---------------------------------------------------------------------------
 # WORKFLOW / PARALLEL RUNNERS
 # ---------------------------------------------------------------------------
 
@@ -518,7 +544,6 @@ def run_workflow(question: str) -> dict:
     if any(k in q for k in ["text", "log", "file", "content", "read"]):
         activated += ["unstructured_data", "text_agent"]
 
-    # Smart fallback: use actual loaded file types instead of blindly defaulting to csv
     if len(activated) == 1:
         detected = _detect_active_agents()
         if detected:
@@ -712,8 +737,16 @@ Specialist findings:
 
 Provide a clear, concise combined analysis."""
             res = llm.invoke([HumanMessage(content=synthesis)])
+
+            # FIX: safely extract string content from LLM synthesis response.
+            # Newer langchain-google-genai versions return res.content as a list
+            # of dicts (e.g. [{"type": "text", "text": "..."}]) instead of a
+            # plain string, which caused "'function' object is not subscriptable"
+            # on every single prompt.
+            synthesis_text = _extract_text_content(res.content)
+
             combined_answer = (
-                f"{res.content}\n\n---\n\n**Detailed Agent Reports:**\n\n"
+                f"{synthesis_text}\n\n---\n\n**Detailed Agent Reports:**\n\n"
                 + "\n\n---\n\n".join(merged_answers)
             )
         except Exception as e:
