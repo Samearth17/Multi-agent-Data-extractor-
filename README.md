@@ -12,14 +12,14 @@ A multi-agent AI-powered data analysis platform that lets you upload **any file*
 
 ## Features
 
-- **📂 Universal File Support** — Upload CSV, Excel (.xlsx/.xls), PDF, and Text/Log/Markdown files
-- **🤖 Multi-Agent Architecture** — Hierarchical agent system with specialized agents for each file type
-- **⚡ Parallel Processing** — Multiple agents analyze your data simultaneously for faster results
-- **🗣️ Natural Language Queries** — Ask questions in plain English, get SQL-powered answers
-- **📊 Auto-Visualization** — Charts and tables are generated automatically from query results
-- **🎨 Agent Canvas** — Visual drag-and-drop interface to see agent hierarchy and workflow
-- **🔄 Auto-Categorization** — Files are automatically routed to the correct specialist agent
-- **🔌 Multi-Provider LLM Support** — Works with Google Gemini, Groq, and NVIDIA APIs (all free tiers available)
+- **📂 Universal File Support** - Upload CSV, Excel (.xlsx/.xls), PDF, and Text/Log/Markdown files
+- **🤖 Multi-Agent Architecture** - Hierarchical agent system with specialized agents for each file type
+- **⚡ Parallel Processing** - Multiple agents analyze your data simultaneously for faster results
+- **🗣️ Natural Language Queries** - Ask questions in plain English, get SQL-powered answers
+- **📊 Auto-Visualization** - Charts and tables are generated automatically from query results
+- **🎨 Agent Canvas** - Visual drag-and-drop interface to see agent hierarchy and workflow
+- **🔄 Auto-Categorization** - Files are automatically routed to the correct specialist agent
+- **🔌 Multi-Provider LLM Support** - Works with Google Gemini, Groq, and NVIDIA APIs (all free tiers available)
 
 ## Architecture
 
