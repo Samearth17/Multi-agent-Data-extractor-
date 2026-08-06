@@ -60,7 +60,7 @@ Each specialist agent has SQL access to the database and uses LLM-powered reason
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/universal-data-extractor.git
+git clone https://github.com/samearth17/universal-data-extractor.git
 cd universal-data-extractor
 
 # Create virtual environment
