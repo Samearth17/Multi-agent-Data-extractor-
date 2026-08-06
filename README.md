@@ -1,4 +1,4 @@
-# ⚡ Universal Data Extractor
+# Universal Data Extractor
 
 A multi-agent AI-powered data analysis platform that lets you upload **any file** (CSV, Excel, PDF, Text) and query it using natural language. Built with a hierarchical agent architecture that automatically routes your data to the right specialist agent for analysis.
 
@@ -10,7 +10,7 @@ A multi-agent AI-powered data analysis platform that lets you upload **any file*
 
 ---
 
-## ✨ Features
+## Features
 
 - **📂 Universal File Support** — Upload CSV, Excel (.xlsx/.xls), PDF, and Text/Log/Markdown files
 - **🤖 Multi-Agent Architecture** — Hierarchical agent system with specialized agents for each file type
@@ -21,7 +21,7 @@ A multi-agent AI-powered data analysis platform that lets you upload **any file*
 - **🔄 Auto-Categorization** — Files are automatically routed to the correct specialist agent
 - **🔌 Multi-Provider LLM Support** — Works with Google Gemini, Groq, and NVIDIA APIs (all free tiers available)
 
-## 🏗️ Architecture
+## Architecture
 
 ```
                     ┌──────────────────┐
@@ -46,7 +46,7 @@ A multi-agent AI-powered data analysis platform that lets you upload **any file*
 
 Each specialist agent has SQL access to the database and uses LLM-powered reasoning to analyze your data.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -87,7 +87,7 @@ open http://localhost:8000
 
 The app will be available at `http://localhost:8000` with the Agent Canvas at `http://localhost:8000/canvas`.
 
-## 📖 Usage
+## Usage
 
 1. **Upload a file** — Drag & drop or click to upload any CSV, Excel, PDF, or text file
 2. **Ask a question** — Type a natural language question about your data
@@ -101,7 +101,7 @@ The app will be available at `http://localhost:8000` with the Agent Canvas at `h
 - *"How many unique categories are there?"*
 - *"Create a bar chart comparing sales by region"*
 
-## 🔧 Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -112,7 +112,7 @@ The app will be available at `http://localhost:8000` with the Agent Canvas at `h
 | **Frontend** | Vanilla HTML/CSS/JS, Chart.js |
 | **File Parsing** | Pandas, PyPDF2, openpyxl |
 
-## 📡 API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -128,7 +128,7 @@ The app will be available at `http://localhost:8000` with the Agent Canvas at `h
 | `GET` | `/api/setup` | Check provider configuration |
 | `POST` | `/api/set-key` | Configure an API key |
 
-## 🌐 Deployment
+## Deployment
 
 ### Deploy to Render (Recommended — Free Tier)
 
@@ -160,7 +160,7 @@ railway up
 | `GROQ_API_KEY` | At least one | Groq API key |
 | `NVIDIA_API_KEY` | Optional | NVIDIA API key |
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 universal-data-extractor/
@@ -186,10 +186,10 @@ universal-data-extractor/
 └── README.md             # This file
 ```
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License , see the [LICENSE](LICENSE) file for details.
 
 ---
 
-Built with ❤️ using FastAPI, LangChain, and multi-agent AI
+Built with FastAPI, LangChain, and multi-agent AI
