@@ -128,29 +128,6 @@ The app will be available at `http://localhost:8000` with the Agent Canvas at `h
 | `GET` | `/api/setup` | Check provider configuration |
 | `POST` | `/api/set-key` | Configure an API key |
 
-## Deployment
-
-### Deploy to Render (Recommended — Free Tier)
-
-1. Push your code to GitHub
-2. Go to [render.com](https://render.com) → New Web Service
-3. Connect your GitHub repo
-4. Settings:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-5. Add environment variables (API keys) in the Render dashboard
-
-### Deploy to Railway
-
-```bash
-# Install Railway CLI
-npm i -g @railway/cli
-
-# Login and deploy
-railway login
-railway init
-railway up
-```
 
 ### Environment Variables
 
